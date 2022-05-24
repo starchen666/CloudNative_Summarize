@@ -1024,8 +1024,6 @@ apiserver 分为 kube-apiserver 、aggregator-apiserver、
 > > > > > 3，
 > 
 > **这就是 Raft Leader 选举核心原理**，使用心跳机制维持 Leader 身份、触发 Leader 选举，etcd 基于它实现了高可用，只要集群一半以上节点存活、可相互通信，Leader 宕机后，就能快速选举出新的 Leader，继续对外提供服务。
-> 
-> 
 
 #### 7.4.3 日志复制
 
@@ -1105,8 +1103,6 @@ apiserver 分为 kube-apiserver 、aggregator-apiserver、
 > > 
 > > **通过以上规则就可防止日志图 2 中的 Follower A 节点成为 Leader**
 > 
-> 
-> 
 > ##### 日志复制规则
 > 
 > > 1，**在日志图 2 中，Leader B 返回给 client 成功后若突然 crash 了，此时可能还并未将 6 号日志条目已提交的消息通知到 Follower A 和 C，那么如何确保 6 号日志条目不被新 Leader 删除呢？**
@@ -1120,8 +1116,6 @@ apiserver 分为 kube-apiserver 、aggregator-apiserver、
 > > > 2，**只附加原则是**指Leader 只能追加日志条目，不能删除已持久化的日志条目。
 > > > 
 > > > 3，**日志匹配特性**是为了保证各个节点日志一致性，Raft 算法在追加日志的时候，引入了一致性检查。Leader 在发送追加日志 RPC 消息时，会把新的日志条目紧接着之前的条目的索引位置和任期号包含在里面。Follower 节点会检查相同索引位置的任期号是否与 Leader 一致，一致才能追加。
-> 
-> 
 
 ### 7.5 MVCC （Multiversion concurrency control）
 
@@ -1134,8 +1128,6 @@ apiserver 分为 kube-apiserver 、aggregator-apiserver、
 > > ![](https://static001.geekbang.org/resource/image/1f/2c/1fbf4aa426c8b78570ed310a8c9e2c2c.png)
 > > 
 > > 从图中你可以看到，随着时间增长，你每次修改操作，版本号都会递增。每修改一次，生成一条新的数据记录。当你指定版本号读取数据时，它实际上访问的是版本号生成那个时间点的快照数据。当你删除数据的时候，它实际也是新增一条带删除标识的数据记录。
-> > 
-> > 
 
 #### 7.5.1 整体架构
 
@@ -1173,8 +1165,6 @@ apiserver 分为 kube-apiserver 、aggregator-apiserver、
 
 > etcd 在每次修改 key 时会生成一个全局递增的版本号（revision），然后通过数据结构 B-tree 保存**用户 key 与版本号**之间的关系，**再以版本号**作为 **boltdb key**，以**用户的 key-value 等信息**作为**boltdb value**，保存到 boltdb。
 > 
-> 
-> 
 > etcd 保存用户 key 与版本号映射关系的数据结构 B-tree，为什么 etcd 使用它而不使用哈希表、平衡二叉树？
 > 
 > > 1 ， 从 etcd 的功能特性上分析， 因 etcd 支持范围查询，因此保存索引的数据结构也必须支持范围查询才行。所以哈希表不适合，而 B-tree 支持范围查询。
@@ -1197,7 +1187,6 @@ apiserver 分为 kube-apiserver 、aggregator-apiserver、
 > 
 > **在 treeIndex 中**，**每个节点的 key**是一个 **keyIndex 结构**，etcd 就是通过它保存了用户的 key 与版本号的映射关系。
 > 
-> >     
 > >     type keyIndex struct {
 > >        key         []byte //用户的key名称，比如我们案例中的"hello"
 > >        modified    revision //最后一次修改key时的etcd版本号,比如我们案例中的刚写入hello为world1时的，版本号为2
@@ -1212,19 +1201,16 @@ apiserver 分为 kube-apiserver 、aggregator-apiserver、
 > > > 
 > > > generation 结构详细信息如下：
 > > > 
-> > >     
 > > >     type generation struct {
 > > >        ver     int64    //表示此key的修改次数
 > > >        created revision //表示generation结构创建时的版本号
 > > >        revs    []revision //每次修改key时的revision追加到此数组
 > > >     }
-> > >     
 > > > 
 > > > generation 结构中包含此 key 的修改次数、generation 创建时的版本号、对此 key 的修改版本号记录列表。
 > > > 
 > > > > 版本号（revision）并不是一个简单的整数，而是一个结构体,    revision 结构及含义如下
 > > > > 
-> > > >     
 > > > >     type revision struct {
 > > > >        main int64    // 一个全局递增的主版本号，随put/txn/delete事务递增，一个事务内的key main版本号是一致的
 > > > >        sub int64    // 一个事务内的子版本号，从0开始随事务内put/delete操作递增
@@ -1248,8 +1234,6 @@ apiserver 分为 kube-apiserver 、aggregator-apiserver、
 > > > > > 1        
 > > > > > 
 > > > > > 1
-> > > > > 
-> > > > > 
 
 #### 7.5.3 MVCC 更新 key 原理
 
@@ -1283,7 +1267,6 @@ apiserver 分为 kube-apiserver 、aggregator-apiserver、
 > > > 
 > > > keyIndex 填充后的结果如下所示：
 > > > 
-> > >     
 > > >     key hello的keyIndex:
 > > >     key:     "hello"
 > > >     modified: <2,0>
@@ -1308,17 +1291,74 @@ apiserver 分为 kube-apiserver 、aggregator-apiserver、
 > > 
 > > 1
 
-
-
 #### 7.5.4 MVCC 查询 key 原理
 
-> 1
+> **完成 put hello 为 world1 操作后，通过 etcdctl 发起一个 get hello 操作**
+> 
+> > ![](https://static001.geekbang.org/resource/image/55/ee/55998d8a1f3091076a9119d85e7175ee.png)
+> > 
+> > 1, MVCC模块会创建一个读事务对象（TxnRead），在 etcd 3.4 中 Backend 实现了 ConcurrentReadTx， 也就是并发读特性。
+> > 
+> > 2，**并发读特性**的**核心原理**是创建读事务对象时，它会**全量拷贝当前写事务未提交的 buffer 数据**，并发的读写事务不再阻塞在一个 buffer 资源锁上，实现了全并发读。
+> 
+> 
+> 
+> 指定版本号读取历史记录又是怎么实现的呢
+> 
+> > 1，当你再次发起一个 put hello 为 world2 修改操作时，key hello 对应的 keyIndex 的结果如下面所示，keyIndex.modified 字段更新为 <3,0>，generation 的 revision 数组追加最新的版本号 <3,0>，ver 修改为 2.
+> > 
+> >     key hello的keyIndex:
+> >     key:     "hello"
+> >     modified: <3,0>
+> >     generations:
+> >     [{ver:2,created:<2,0>,revisions: [<2,0>,<3,0>]}]
+> > 
+> > 2，boltdb 插入一个新的 key revision{3,0}，此时存储到 boltdb 中的 key-value 数据如下：
+> > 
+> > ![](https://static001.geekbang.org/resource/image/8b/f7/8bec06d61622f2a99ea9dd2f78e693f7.jpg)
+> > 
+> > 3，这时你再发起一个**指定历史版本号为 2 的读请求**时，实际是**读版本号为 2** 的时间点的快照数据。treeIndex 模块会遍历 generation 内的历史版本号，**返回小于等于** 2 的最大历史版本号，在我们这个案例中，也就是 revision{2,0}，以它作为 boltdb 的 key，从 boltdb 中查询出 value 即可。
+> 
+> 
+> 
+> 
 
 #### 7.5.5 MVCC 删除 key 原理
 
-> 1
-
-
+> 当你执行 etcdctl del hello 命令时，etcd 会**立刻**从 treeIndex 和 boltdb 中删除此数据吗？还是**增加一个标记实现延迟删除（lazy delete）**呢？
+> 
+> 答案为**etcd 实现的是延期删除模式，原理与 key 更新类似。**
+> 
+> > 1，与更新 key 不一样之处在于，一方面，**生成的 boltdb key 版本号{4,0,t}追加了删除标识（tombstone, 简写 t）**，boltdb value 变成只含用户 key 的 KeyValue 结构体。
+> > 
+> > 2，另一方面 treeIndex 模块也会给此 key hello 对应的 keyIndex 对象，追加一个空的 generation 对象，表示此索引对应的 key 被删除了。
+> > 
+> > 3，当你再次查询 hello 的时候，treeIndex 模块根据 key hello 查找到 keyindex 对象后，**若发现其存在空的 generation 对象**，并且查询的版本号**大于等于**被删除时的版本号，则会返回空。
+> 
+> etcdctl hello 操作后的 keyIndex 的结果如下面所示：
+> 
+> >     key hello的keyIndex:
+> >     key:     "hello"
+> >     modified: <4,0>
+> >     generations:
+> >     [
+> >     {ver:3,created:<2,0>,revisions: [<2,0>,<3,0>,<4,0>(t)]}，             
+> >     {empty}
+> >     ]
+> > 
+> > 1，boltdb 此时会插入一个新的 key revision{4,0,t}，此时存储到 boltdb 中的 key-value 数据如下：
+> > 
+> > ![](https://static001.geekbang.org/resource/image/da/17/da4e5bc5033619dda296c022ac6yyc17.jpg)
+> > 
+> > 那么** key 打上删除标记后有哪些用途**呢？什么时候会真正删除它呢？
+> > 
+> > > 1，一方面删除 key 时会生成 events，Watch 模块根据 key 的删除标识，会生成对应的 Delete 事件。
+> > > 
+> > > 2，另一方面，当你重启 etcd，遍历 boltdb 中的 key 构建 treeIndex 内存树时，你需要知道哪些 key 是已经被删除的，并为对应的 key 索引生成 tombstone 标识。而**真正删除 treeIndex 中的索引对象**、**boltdb 中的 key**是通过**压缩 (compactor) **组件异步完成。
+> > > 
+> > > 3，正因为 etcd 的删除 key 操作是基于以上延期删除原理实现的，因此**只要压缩组件未回收历史版本**，**我们就能从 etcd 中找回误删的数据**。
+> > 
+> > 
 
 ## 8，项目
 
