@@ -1,0 +1,3 @@
+^console\.subdomain\.com(:[0-9]+)?(/.*)?$ be_secure:openshift-console:console
+^hawkular-metrics\.subdomain\.com(:[0-9]+)?(/.*)?$ be_secure:openshift-infra:hawkular-metrics
+^app\.subdomain\.com(:[0-9]+)?/app-gateway(/.*)?$ be_edge_http:app:app-gateway

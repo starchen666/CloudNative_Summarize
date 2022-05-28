@@ -1,0 +1,1 @@
+^console\.subdomain\.com(:[0-9]+)?(/.*)?$ openshift-console:console
