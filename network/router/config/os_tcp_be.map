@@ -1,0 +1,4 @@
+^registry-console-default\.testapps\.oa\.citicbank\.com(:[0-9]+)?(/.*)?$ be_tcp:default:registry-console
+^hawkular-metrics\.testapps\.oa\.citicbank\.com(:[0-9]+)?(/.*)?$ be_secure:openshift-infra:hawkular-metrics
+^docker-registry-default\.testapps\.oa\.citicbank\.com(:[0-9]+)?(/.*)?$ be_tcp:default:docker-registry
+^console\.testapps\.oa\.citicbank\.com(:[0-9]+)?(/.*)?$ be_secure:openshift-console:console

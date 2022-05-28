@@ -1,0 +1,2 @@
+^registry-console-default\.subdomain\.com(:[0-9]+)?(/.*)?$ 1
+^docker-registry-default\.subdomain\.com(:[0-9]+)?(/.*)?$ 1
