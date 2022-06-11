@@ -4,7 +4,7 @@
 
     使用service，我们可以通过Kube-proxy组件找到对应的pod ip。但是后续怎么将数据发送给对方pod呢？这就需要网络插件了，它将负责帮助我们传输数据，根据其实现原理不同，常用的插件有ovs，fannel。而他们的本质还是构建了一个overlay网络。
 
-<img src="file:///E:/CloudNative_Summarize/network/overlay.png" title="" alt="" data-align="center">
+<img src="./overlay.png" title="" alt="" data-align="center">
 
         [参考overlay网络](https://info.support.huawei.com/info-finder/encyclopedia/zh/Overlay%E7%BD%91%E7%BB%9C.html)
 
@@ -16,7 +16,7 @@
 >   
 >   - 全名软件定义网络，目的在于将网络控制、转发的功能分离。是一种实现控制可编程的新兴**网络架构**。
 >     
->     <img src="file:///E:/CloudNative_Summarize/network/sdn1.jpg?msec=1654926625167?msec=1654932299092?msec=1654932465279" title="" alt="" data-align="center">
+>     <img src="./sdn1.jpg?msec=1654926625167?msec=1654932299092?msec=1654932465279" title="" alt="" data-align="center">
 >   
 >   - [SDN](https://zhuanlan.zhihu.com/p/504887869)
 > 
@@ -24,7 +24,7 @@
 >   
 >   - openflow就是一种网络通信协议，它工作在第二层，通过流表来指导数据包的转发。所以sdn控制器就可以通过它的接口来操作不同的流表来控制流量转发。【**前提是控制器和交换机都支持此协议**】
 >     
->     <img title="" src="file:///E:/CloudNative_Summarize/network/openflow1.png?msec=1654926607272?msec=1654932299093?msec=1654932465279" alt="" data-align="center" width="275">
+>     <img title="" src="./openflow1.png?msec=1654926607272?msec=1654932299093?msec=1654932465279" alt="" data-align="center" width="275">
 >   
 >   - [OpenFlow协议_闻啼鸟的博客-CSDN博客_openflow协议](https://blog.csdn.net/Tom942067059/article/details/120049835)
 > 
@@ -38,11 +38,11 @@
 >   
 >   - 为构建overlay网络提供一套方法论，它将二层以太帧封装到四层的UDP报文中，并在三层网络中传输，可以将所有的机器的连接到一个虚拟二层交换机【**大二层的交换机**】。
 >     
->     <img src="file:///E:/CloudNative_Summarize/network/vxlan1.png?msec=1654931342575?msec=1654932299094?msec=1654932465280" title="" alt="" data-align="center">
+>     <img src="./vxlan1.png?msec=1654931342575?msec=1654932299094?msec=1654932465280" title="" alt="" data-align="center">
 >   
 >   - 本质上是一种**隧道技术**，通过vni标识不同隧道【**vni可以隔离网络**】，vtep设备对原始包封装，即加上vxlan的头部，udp的头部，将其传输到同一vni所在的vtep设备，然后解封装还原出原始数据。
 >     
->     <img src="file:///E:/CloudNative_Summarize/network/vxlan.png?msec=1654932490190" title="" alt="" data-align="center">
+>     <img src="./vxlan.png?msec=1654932490190" title="" alt="" data-align="center">
 >   
 >   - 可以解决的问题
 >     
@@ -70,7 +70,7 @@
 
 > [源码解读](https://mp.weixin.qq.com/s?__biz=MzA3MDg4Nzc2NQ==&mid=2652137188&idx=1&sn=98608470be8014acf8cfa1bacb219bfb&scene=21#wechat_redirect)
 > 
-> <img src="file:///E:/CloudNative_Summarize/network/openshift-sdn1.png" title="" alt="" data-align="center">
+> <img src="./openshift-sdn1.png" title="" alt="" data-align="center">
 
 **openshift流量走向总结**[理解OpenShift（3）：网络之 SDN - SammyLiu - 博客园](https://www.cnblogs.com/sammyliu/p/10064450.html)
 
@@ -82,19 +82,19 @@
 >       
 >       * 在ovs br0直接转发到对应pod【根据ovs流表】
 >         
->         <img src="file:///E:/CloudNative_Summarize/network/pod-pod.png" title="" alt="" data-align="center">
+>         <img src="./pod-pod.png" title="" alt="" data-align="center">
 >     
 >     * 不同节点
 >       
 >       * 转发到ovs br0的vxlan0接口上，然后同宿主机的网卡转发。【**这里就用到Overlay**】
 >         
->         <img title="" src="file:///E:/CloudNative_Summarize/network/pod-other-pod.png" alt="" width="485" data-align="center">
+>         <img title="" src="./pod-other-pod.png" alt="" width="485" data-align="center">
 >   
 >   * pod和service之间
 >     
 >     * 转发到ovs br0的tun0接口，先进行iptables的NAT过程【**参考kube-proxy**】，然后回到br0的vxlan0，然后转发到宿主机的网卡
 >       
->       <img src="file:///E:/CloudNative_Summarize/network/pod-service.png" title="" alt="" data-align="center">
+>       <img src="./pod-service.png" title="" alt="" data-align="center">
 > 
 > * 外部通信
 >   
@@ -108,13 +108,13 @@
 >     
 >     * router方式，infra节点上同样会有ovs，相比pod和pod之间之间访问，它需要先从br0的tun0接口进入到br0，然后再转给br0的vxlan0，然后经由宿主机网卡转发出去。【**router采用host-network，所以需要先进入ovs，而pod与pod之间访问的时候，pod的网络已经接入br0**】
 >       
->       <img src="file:///E:/CloudNative_Summarize/network/internet-pod.png" title="" alt="" data-align="center">
+>       <img src="./internet-pod.png" title="" alt="" data-align="center">
 >     
 >     * nodeport方式，与上述方式类似【只是得到pod ip的方式不一样】。通过iptables得知具体pod ip后，iptables会转发到ovs br0的tun0接口，然后再经过br0的vxlan0转发出去。
 > 
 > * **总之一句话：如果涉及到NAT就需要依赖宿主机的iptables，就会先经过tun0，如果是内部通信就还会经过vxlan0走overlay网络。**
 >   
->   <img src="file:///E:/CloudNative_Summarize/network/openshift-sdn.png" title="" alt="" data-align="center">
+>   <img src="./openshift-sdn.png" title="" alt="" data-align="center">
 
 **namespace网络隔离粗浅理解**
 
