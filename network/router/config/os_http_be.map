@@ -1,0 +1,1 @@
+^app\.subdomain\.com(:[0-9]+)?/app-service(/.*)?$ be_http:app:app-service
