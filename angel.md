@@ -66,13 +66,13 @@ pod是kubernetes最小的调度单元
 > > 
 > > 4，而其他情况下，由于 Kubernetes 都可以重启这个容器，所以 Pod 的状态保持 Running 不变。而如果这个 Pod 有多个容器，仅有一个容器异常退出，它就始终保持 Running 状态，哪怕即使 restartPolicy=Never。只有当所有容器也异常退出之后，这个 Pod 才会进入 Failed 状态。
 
-## 1.3 监控监测
+### 1.3 监控监测
 
 > **livenessProbe**：
 > 
 > **readinessProbe:** readinessProbe 检查结果的成功与否，决定的这个 Pod 是不是能被通过 Service 的方式访问到，而并不影响 Pod 的生命周期
 
-## 1.4 PodPreSet
+### 1.4 PodPreSet
 
 > 1，PodPreset 里定义的内容，只会在 Pod API 对象被创建之前追加在这个对象本身上，而不会影响任何 Pod 的控制器的定义。
 > 
@@ -102,7 +102,7 @@ pod是kubernetes最小的调度单元
 > 
 > 3，preStop 发生的时机，则是容器被杀死之前（比如，收到了 SIGKILL 信号）。而需要明确的是，preStop 操作的执行，是同步的。所以，它会阻塞当前的容器杀死流程，直到这个 Hook 定义操作完成之后，才允许容器被杀死，这跟 postStart 不一样。
 
-### 1.5 QOS
+### 1.7 QOS
 
 #### QoS 级别
 
@@ -543,17 +543,17 @@ apiserver 分为 kube-apiserver 、aggregator-apiserver、
 
 ## 6，网络相关问题
 
-## 6.1 flannel
+### 6.1 flannel
 
-#### 6.1.1 udp
+##### 6.1.1 udp
 
 #### 6.1.2 vxlan
 
 #### 6.1.3 hostgw
 
-## 6.2 calico
+### 6.2 calico
 
-##### 6.2.1 ipip
+#### 6.2.1 ipip
 
 #### 6.2.2 vxlan
 
@@ -561,10 +561,10 @@ apiserver 分为 kube-apiserver 、aggregator-apiserver、
 
 ## 7，etcd相关
 
-### etcd基础架构介绍
+### 7.1 etcd基础架构介绍
 
-![](https://static001.geekbang.org/resource/image/45/bb/457db2c506135d5d29a93ef0bd97e4bb.png?wh=1920*1229)
-
+> ![](https://static001.geekbang.org/resource/image/45/bb/457db2c506135d5d29a93ef0bd97e4bb.png?wh=1920*1229)
+> 
 > **Client层** ——主要提供client v2和v3两个大版本API客户端库，提供了简洁易用的API，同时支持**负载均衡**、**节点故障转移**、**可极大降低业务使用etcd**、提高开发率、服务可用性；
 > 
 > **API层** —— API网络层包括**client访问server**和**server之间的通信协议**
@@ -575,7 +575,7 @@ apiserver 分为 kube-apiserver 、aggregator-apiserver、
 > > > 
 > > > v3 API使用gRPC协议，同时v3 API通过etcd grpc-gateway组件也支持HTTP/1.x协议
 > > 
-> > **b**.etcd server之间的通信协议，是指节点间Raft算法实现数据复制和Leader选举等功能时使用的http协议
+> > **b**.etcd server之间的通信协议，是指**节点间Raft算法实现数据复制**和**Leader选举**等功能时使用的http协议
 > 
 > **Raft算法层** ——Raft算法实现了**Leader选举**，**日志复制**，**ReadIndex**等核心算法特征，用于**保障etcd多个节点间的数据一致性**、**提升服务可用性**，是etcd的基石和亮点
 > 
@@ -587,7 +587,7 @@ apiserver 分为 kube-apiserver 、aggregator-apiserver、
 > > 
 > > **boltdb**——保存**集群元数据**和**用户写入的数据**
 
-### 7.1 etcd的读请求.
+### 7.2 etcd的读请求.
 
 > ![](https://static001.geekbang.org/resource/image/45/bb/457db2c506135d5d29a93ef0bd97e4bb.png?wh=1920*1229)
 > 
@@ -741,7 +741,7 @@ apiserver 分为 kube-apiserver 、aggregator-apiserver、
 > 
 > 一个读请求结束
 
-## 7.2 etcd的写请求.
+### 7.3 etcd的读请求.
 
 > #### 整体架构
 > 
@@ -950,6 +950,415 @@ apiserver 分为 kube-apiserver 、aggregator-apiserver、
 > > > > 2，在更新 boltdb 的时候，etcd 也会同步数据到 bucket buffer。
 > > > > 
 > > > > 3，因此 etcd 处理读请求的时候会优先从 bucket buffer 里面读取，其次再从 boltdb 读，通过 bucket buffer 实现读写性能提升，同时保证数据一致性；
+
+### 7.4 Raft算法
+
+#### 7.4.1 共识算法
+
+> ![](https://static001.geekbang.org/resource/image/3y/eb/3yy3fbc1ab564e3af9ac9223db1435eb.png)
+> 
+> 它最早是基于复制状态机背景下提出来的 ，它由**共识模块**、**日志模块**、**状态机**组成。通过**共识模块**保证各个节点日志的一致性，然后各个节点基于同样的日志、顺序执行指令，最终**各个复制状态机的结果**实现一致
+> 
+> Raft 算法将复杂的共识问题拆分成三个子问题。
+> 
+> > 1，**Leader 选举**，Leader 故障后集群能快速选出新 Leader；
+> > 
+> > 2，**日志复制**， 集群**只有 Leader 能写入日志**， Leader 负责复制日志到 Follower 节点，并强制 Follower 节点与自己保持相同；
+> > 
+> > 3，**安全性**，一个任期内集群只能产生一个 Leader、已提交的日志条目在发生 Leader 选举时，一定会存在更高任期的新 Leader 日志中、各个节点的状态机应用的任意位置的日志条目内容应一样等。
+
+#### 7.4.2 Leader 选举
+
+> ##### **节点状态**
+> 
+> **1，Follower**，跟随者， 同步从 Leader 收到的日志，etcd 启动的时候默认为此状态；
+> 
+> **2，Candidate**，竞选者，可以发起 Leader 选举；
+> 
+> **3，Leader**，集群领导者， 唯一性，拥有同步日志的特权，需定时广播心跳给 Follower 节点，以维持领导者身份。
+> 
+> ![](https://static001.geekbang.org/resource/image/a5/09/a5a210eec289d8e4e363255906391009.png)
+> 
+> 当 Follower 节点接收 Leader 节点心跳消息超时后，它会转变成 Candidate 节点，并可发起竞选 Leader 投票，若获得集群多数节点的支持后，它就可转变成 Leader 节点、
+> 
+> ##### **Leader crash 场景**
+> 
+> > ![](https://static001.geekbang.org/resource/image/a2/59/a20ba5b17de79d6ce8c78a712a364359.png)
+> > 
+> > 正常情况下，Leader 节点会按照心跳间隔时间，定时广播心跳消息（MsgHeartbeat 消息）给 Follower 节点，以维持 Leader 身份。 Follower 收到后回复心跳应答包消息（MsgHeartbeatResp 消息）给 Leader。
+> > 
+> > **任期号（term）作用**
+> > 
+> > > 1，Raft 将时间划分成一个个任期，任期用连续的整数表示，每个任期从一次选举开始，赢得选举的节点在该任期内充当 Leader 的职责，随着时间的消逝，集群可能会发生新的选举，任期号也会单调递增
+> > > 
+> > > 2，通过任期号，可以比较各个节点的数据新旧、识别过期的 Leader 等，它在 Raft 算法中充当逻辑时钟，发挥着重要作用。
+> > 
+> > **Leader crash 后，etcd 是如何自愈**
+> > 
+> > > 1，当 Leader 节点异常后，Follower 节点会接收 Leader 的心跳消息超时，当超时时间大于竞选超时时间后，它们会进入 Candidate 状态。
+> > > 
+> > > > etcd 默认心跳间隔时间（heartbeat-interval）是 100ms， 默认竞选超时时间（election timeout）是 1000ms， 你需要根据实际部署环境、业务场景适当调优，否则就很可能会频繁发生 Leader 选举切换，导致服务稳定性下降
+> > > 
+> > > 2，进入 Candidate 状态的节点，会立即发起选举流程，自增任期号，投票给自己，并向其他节点发送竞选 Leader 投票消息（MsgVote）
+> > > 
+> > > 3，C 节点收到 Follower B 节点竞选 Leader 消息后，这时候可能会出现如下两种情况
+> > > 
+> > > > 1，C 节点判断 B 节点的数据至少和自己一样新、B 节点任期号大于 C 当前任期号、并且 C 未投票给其他候选者，就可投票给 B。这时 B 节点获得了集群多数节点支持，于是成为了新的 Leader。
+> > > > 
+> > > > 2，恰好 C 也心跳超时超过竞选时间了，它也发起了选举，并投票给了自己，那么它将拒绝投票给 B，这时谁也无法获取集群多数派支持，只能等待竞选超时，开启新一轮选举。Raft 为了优化选票被瓜分导致选举失败的问题，引入了随机数，每个节点等待发起选举的时间点不一致，优雅的解决了潜在的竞选活锁，同时易于理解
+> > > 
+> > > 4，现有 Leader 发现了新的 Leader 任期号，那么它就需要转换到 Follower 节点
+> > > 
+> > > > **问题：**
+> > > > 
+> > > > > 1 ，A  节点 crash 后，再次启动成为 Follower，假设因为网络问题无法连通 B、C 节点，这时候根据状态图，我们知道它将不停自增任期号，发起选举。等 A 节点网络异常恢复后，那么现有 Leader 收到了新的任期号，就会触发新一轮 Leader 选举，影响服务的可用性。
+> > > > > 
+> > > > > 2，A 节点的数据是远远落后 B、C 的，是无法获得集群 Leader 地位的，发起的选举无效且对集群稳定性有伤害
+> > > > 
+> > > > **避免以上场景中的无效的选举**
+> > > > 
+> > > > > 1，在 etcd 3.4 中，etcd 引入了一个 PreVote 参数（默认 false），可以用来启用 PreCandidate 状态解决此问题，如下图所示。Follower 在转换成 Candidate 状态前，先进入 PreCandidate 状态，不自增任期号， 发起预投票。若获得集群多数节点认可，确定有概率成为 Leader 才能进入 Candidate 状态，发起选举流程。
+> > > > > 
+> > > > > 2，因 A 节点数据落后较多，预投票请求无法获得多数节点认可，因此它就不会进入 Candidate 状态，导致集群重新选举。
+> > > > > 
+> > > > > 3，
+> 
+> **这就是 Raft Leader 选举核心原理**，使用心跳机制维持 Leader 身份、触发 Leader 选举，etcd 基于它实现了高可用，只要集群一半以上节点存活、可相互通信，Leader 宕机后，就能快速选举出新的 Leader，继续对外提供服务。
+
+#### 7.4.3 日志复制
+
+> ![](https://static001.geekbang.org/resource/image/a5/83/a57a990cff7ca0254368d6351ae5b983.png)
+> 
+> ##### **Raft 日志复制核心流程**
+> 
+> > 1，Leader 收到 client 的请求后，etcdserver 的 KV 模块会向 Raft 模块提交一个 put hello 为 world 提案消息（流程图中的序号 2 流程）， 它的消息类型是 MsgProp。
+> > 
+> > 2，Leader 的 Raft 模块获取到 MsgProp 提案消息后，为此提案生成一个日志条目，**追加到未持久化、不稳定的 Raft 日志中**，随后会**遍历集群 Follower 列表和进度信息**，为每个 Follower 生成追加（MsgApp）类型的 RPC 消息，此消息中包含待复制给 Follower 的日志条目。
+> > 
+> > > **两个疑问：**
+> > > 
+> > > **1**，Leader 是如何知道从哪个索引位置发送日志条目给 Follower，以及 Follower 已复制的日志最大索引是多少呢
+> > > 
+> > > > ![](https://static001.geekbang.org/resource/image/3d/87/3dd2b6042e6e0cc86f96f24764b7f587.png)
+> > > > 
+> > > > ![](https://static001.geekbang.org/resource/image/3d/87/3dd2b6042e6e0cc86f96f24764b7f587.png)
+> > > > 
+> > > > Leader 会**维护两个核心字段**来追踪各个 Follower 的进度信息
+> > > > 
+> > > > > 1， 一个字段是**NextIndex**， 它表示 Leader 发送给 Follower 节点的下一个日志条目索引。
+> > > > > 
+> > > > > 2，一个字段是 **MatchIndex**， 它表示 Follower 节点已复制的最大日志条目的索引，比如上面的日志图 1 中 C 节点的已复制最大日志条目索引为 5，A 节点为 4
+> > > 
+> > > **2**，日志条目什么时候才会追加到稳定的 Raft 日志中呢？Raft 模块负责持久化吗？
+> > > 
+> > > > 1，etcd Raft 模块设计实现上抽象了网络、存储、日志等模块，它本身并不会进行网络、存储相关的操作，**上层应用**需结合自己业务场景选择内置的模块或自定义实现网络、存储、日志等模块。
+> > > > 
+> > > > 2，上层应用通过**Raft 模块的输出接口（如 Ready 结构）**，**获取到待持久化的日志条目**和**待发送给 Peer 节点的消息**后（如上面的 MsgApp 日志消息），需持久化日志条目到自定义的 WAL 模块，通过**自定义的网络模块**将消息发送给 Peer 节点
+> > > > 
+> > > > 3，日志条目持久化到稳定存储中后，这时候你就可以将日志条目追加到稳定的 Raft 日志中。即便这个日志是内存存储，节点重启时也不会丢失任何日志条目，因为 WAL 模块已持久化此日志条目，可通过它重建 Raft 日志
+> > > > 
+> > > > 4，etcd Raft 模块提供了一个内置的**内存存储（MemoryStorage）模块**实现，etcd 使用的就是它，Raft 日志条目保存在内存中。**网络模块并未提供内置的实现**，etcd 基于 HTTP 协议实现了 peer 节点间的网络通信，并根据消息类型，支持选择 pipeline、stream 等模式发送，显著提高了网络吞吐量、降低了延时。
+> > > 
+> > > 3，etcd 是如何与 Raft 模块交互，获取待持久化的日志条目和发送给 peer 节点的消息
+> > > 
+> > > > 1，Raft 模块输入是**Msg 消息**，输出是**一个 Ready 结构**，它包含**待持久化的日志条目**、**发送给 peer 节点的消息**、**已提交的日志条目内容**、**线性查询结果**等 Raft 输出核心信息
+> > > > 
+> > > > 2，etcdserver 模块**通过 channel 从 Raft 模块获取到 Ready 结构**后（流程图中的序号 3 流程），因 B 节点是 Leader，它首先会**通过基于 HTTP 协议的网络模块将追加日志条目消息（MsgApp）广播给 Follower**，并**同时将待持久化的日志条目持久化到 WAL 文件中**（流程图中的序号 4 流程），最后**将日志条目追加到稳定的 Raft 日志存储**中（流程图中的序号 5 流程）
+> > > > 
+> > > > 3，各个 Follower 收到追加日志条目（MsgApp）消息，并通过安全检查后，它会**持久化消息到 WAL 日志**中，并**将消息追加到 Raft 日志存储**，随后会**向 Leader 回复一个应答追加日志条目（MsgAppResp）的消息**，**告知 Leader 当前已复制的日志最大索引**（流程图中的序号 6 流程）
+> > > > 
+> > > > 4，Leader 收到应答追加日志条目（MsgAppResp）消息后，会将 Follower 回复的已复制日志最大索引更新到跟踪 Follower 进展的 Match Index 字段。
+> > > > 
+> > > > > 如下面的日志图 2 中的 Follower C MatchIndex 为 6，Follower A 为 5，日志图 2 描述的是 hello 日志条目提交后的各节点 Raft 日志状态。
+> > > > > 
+> > > > > ![](https://static001.geekbang.org/resource/image/3d/87/3dd2b6042e6e0cc86f96f24764b7f587.png)
+> > > > > 
+> > > > > ![](https://static001.geekbang.org/resource/image/eb/63/ebbf739a94f9300a85f21da7e55f1e63.png)
+> > > > 
+> > > > 5，最后**Leader 根据 Follower 的 MatchIndex 信息**，计算出一个位置，**如果这个位置已经被一半以上节点持久化**，那么**<mark>这个位置之前？</mark>**的日志条目都可以被标记为已提交。
+> > > > 
+> > > > > 在我们这个案例中日志图 2 里 6 号索引位置之前的日志条目已被多数节点复制，那么他们状态都可被设置为已提交。Leader 可通过在发送心跳消息（MsgHeartbeat）给 Follower 节点时，告知它已经提交的日志索引位置。
+> > > > 
+> > > > 6，最后各个节点的 etcdserver 模块，**可通过 channel 从 Raft 模块获取到已提交的日志条目（流程图中的序号 7 流程）**，应用日志条目内容到存储状态机（流程图中的序号 8 流程），返回结果给 client。
+> > > > 
+> > > > **总结：** 通过以上流程，Leader 就完成了同步日志条目给 Follower 的任务，**一个日志条目被确定为已提交的前提**是，**它需要被 Leader 同步到一半以上节点上**。以上就是 etcd Raft 日志复制的核心原理。
+
+#### 7.4.4 安全性
+
+> **疑问**：如果在上面的日志图 2 中，Leader B 在应用日志指令 put hello 为 world 到状态机，并返回给 client 成功后，突然 crash 了，那么 Follower A 和 C 是否都有资格选举成为 Leader 呢？
+> 
+> > 从日志图 2 中我们可以看到，如果 A 成为了 Leader 那么就会导致数据丢失，因为它并未含有刚刚 client 已经写入成功的 put hello 为 world 指令。
+> 
+> **Raft 算法如何确保面对这类问题时不丢数据和各节点数据一致性呢？**
+> 
+> > Raft 通过给选举和日志复制增加一系列规则，来实现 Raft 算法的安全性
+> 
+> ##### 选举规则
+> 
+> > 当节点收到选举投票的时候，需检查候选者的最后一条日志中的任期号，**若小于自己则拒绝投票**。**如果任期号相同，日志却比自己短，也拒绝为其投票**。
+> > 
+> > > 1，比如在日志图 2 中，Folllower A 和 C 任期号相同，但是 Follower C 的数据比 Follower A 要长，那么在选举的时候，Follower C 将拒绝投票给 A， 因为它的数据不是最新的。
+> > > 
+> > > 2，同时，对于一个给定的任期号，最多只会有一个 leader 被选举出来，leader 的诞生需获得集群一半以上的节点支持。每个节点在同一个任期内只能为一个节点投票，节点需要将投票信息持久化，防止异常重启后再投票给其他节点。
+> > 
+> > **通过以上规则就可防止日志图 2 中的 Follower A 节点成为 Leader**
+> 
+> ##### 日志复制规则
+> 
+> > 1，**在日志图 2 中，Leader B 返回给 client 成功后若突然 crash 了，此时可能还并未将 6 号日志条目已提交的消息通知到 Follower A 和 C，那么如何确保 6 号日志条目不被新 Leader 删除呢？**
+> > 
+> > 2，同时在 etcd 集群运行过程中，Leader 节点若频繁发生 crash 后，可能会导致 Follower 节点与 Leader 节点日志条目冲突，如何保证各个节点的同 Raft 日志位置含有同样的日志条目？
+> > 
+> > **以上各类异常场景的安全性**是通过 Raft 算法中的 **Leader 完全特性**和**只附加原则**、**日志匹配**等安全机制来保证的。
+> > 
+> > > **1，Leader 完全特性**是指如果某个日志条目在某个任期号中已经被提交，那么这个条目必然出现在更大任期号的所有 Leader 中。
+> > > 
+> > > 2，**只附加原则是**指Leader 只能追加日志条目，不能删除已持久化的日志条目。
+> > > 
+> > > 3，**日志匹配特性**是为了保证各个节点日志一致性，Raft 算法在追加日志的时候，引入了一致性检查。Leader 在发送追加日志 RPC 消息时，会把新的日志条目紧接着之前的条目的索引位置和任期号包含在里面。Follower 节点会检查相同索引位置的任期号是否与 Leader 一致，一致才能追加。
+
+### 7.5 MVCC （Multiversion concurrency control）
+
+> MVCC 机制的核心思想是**保存一个 key-value 数据的多个历史版本**，etcd 基于它不仅实现了可靠的 Watch 机制，避免了 client 频繁发起 List Pod 等 expensive request 操作，保障 etcd 集群稳定性。而且**MVCC 还能以较低的并发控制开销**，**实现各类隔离级别的事务**，保障事务的安全性，是事务特性的基础。
+> 
+> MVCC 机制正是基于多版本技术实现的一种乐观锁机制，它乐观地认为数据不会发生冲突，但是当事务提交时，具备检测数据是否冲突的能力。
+> 
+> 在 MVCC 数据库中，你更新一个 key-value 数据的时候，它并不会直接覆盖原数据，而是新增一个版本来存储新的数据，每个数据都有一个版本号。
+> 
+> > ![](https://static001.geekbang.org/resource/image/1f/2c/1fbf4aa426c8b78570ed310a8c9e2c2c.png)
+> > 
+> > 从图中你可以看到，随着时间增长，你每次修改操作，版本号都会递增。每修改一次，生成一条新的数据记录。当你指定版本号读取数据时，它实际上访问的是版本号生成那个时间点的快照数据。当你删除数据的时候，它实际也是新增一条带删除标识的数据记录。
+
+#### 7.5.1 整体架构
+
+> 整个 MVCC 特性由 treeIndex、Backend/boltdb 组成
+> 
+> ![](https://static001.geekbang.org/resource/image/f5/2c/f5799da8d51a381527068a95bb13592c.png)
+> 
+> **Apply 模块**通过 MVCC 模块来执行 put 请求，持久化 key-value 数据。
+> 
+> **MVCC 模块**将请求请划分成两个类别，分别是**读事务(ReadTxn)** 和**写事务（WriteTxn）**。
+> 
+> > 1 , 读事务负责处理 range 请求，写事务负责 put/delete 操作。
+> > 
+> > 2 , 读写事务基于 treeIndex、Backend/boltdb 提供的能力，实现对 key-value 的增删改查功能。
+> 
+> **treeIndex 模块**基于内存版 B-tree 实现了 key 索引管理，它保存了用户 key 与版本号（revision）的映射关系等信息。
+> 
+> **Backend 模块**负责 etcd 的 key-value** 持久化存储**，主要由 **ReadTx**、**BatchTx**、**Buffer**组成
+> 
+> > 1 , ReadTx 定义了抽象的读事务接口.
+> > 
+> > 2 , BatchTx 在 ReadTx 之上定义了抽象的写事务接口;
+> > 
+> > 3, Buffer 是数据缓存区。
+> > 
+> > 4 , etcd 设计上支持多种 Backend 实现，目前实现的 Backend 是**boltdb**。
+> > 
+> > > boltdb 是一个基于 B+ tree 实现的、支持事务的 key-value 嵌入式数据库。
+> 
+> **treeIndex 与 boltdb 关系**你可参考下图。
+> 
+> > 当你发起一个 get hello 命令时，从 treeIndex 中获取 key 的版本号，然后再通过这个版本号，从 boltdb 获取 value 信息。boltdb 的 value 是包含用户 key-value、各种版本号、lease 信息的结构体。![](https://static001.geekbang.org/resource/image/e7/8f/e713636c6cf9c46c7c19f677232d858f.png)
+
+#### 7.5.2 treeIndex 原理
+
+> etcd 在每次修改 key 时会生成一个全局递增的版本号（revision），然后通过数据结构 B-tree 保存**用户 key 与版本号**之间的关系，**再以版本号**作为 **boltdb key**，以**用户的 key-value 等信息**作为**boltdb value**，保存到 boltdb。
+> 
+> etcd 保存用户 key 与版本号映射关系的数据结构 B-tree，为什么 etcd 使用它而不使用哈希表、平衡二叉树？
+> 
+> > 1 ， 从 etcd 的功能特性上分析， 因 etcd 支持范围查询，因此保存索引的数据结构也必须支持范围查询才行。所以哈希表不适合，而 B-tree 支持范围查询。
+> > 
+> > 2，从性能上分析，平横二叉树每个节点只能容纳一个数据、导致树的高度较高，而 B-tree 每个节点可以容纳多个数据，树的高度更低，更扁平，涉及的查找次数更少，具有优越的增、删、改、查性能。
+> > 
+> > 3， Google 的开源项目 btree，使用 Go 语言实现了一个内存版的 B-tree，对外提供了简单易用的接口，etcd 正是基于 btree 库实现了一个名为 treeIndex 的索引模块，通过它来查询、保存用户 key 与版本号之间的关系。
+> > 
+> > > 下图是个最大度（degree > 1，简称 d）为 5 的 B-tree，度是 B-tree 中的一个核心参数，它决定了你每个节点上的数据量多少、节点的“胖”、“瘦”程度。
+> > > 
+> > > 从图中你可以看到，节点越胖，意味着一个节点可以存储更多数据，树的高度越低。在一个度为 d 的 B-tree 中，节点保存的最大 key 数为 2d - 1，否则需要进行平衡、分裂操作。
+> > > 
+> > > 这里你要注意的是在 etcd treeIndex 模块中，创建的是最大度 32 的 B-tree，也就是一个叶子节点最多可以保存 63 个 key。
+> > > 
+> > > ![](https://static001.geekbang.org/resource/image/44/74/448c8a2bb3b5d2d48dfb6ea585172c74.png)
+> > > 
+> > > 从图中你可以看到，你通过 put/txn 命令写入的一系列 key，treeIndex 模块基于 B-tree 将其组织起来，**节点之间基于用户 key 比较大小**。
+> > > 
+> > > 当你查找一个 key k95 时，通过 B-tree 的特性，你仅需通过图中流程 1 和 2 两次快速比较，就可快速找到 k95 所在的节点。
+> 
+> **在 treeIndex 中**，**每个节点的 key**是一个 **keyIndex 结构**，etcd 就是通过它保存了用户的 key 与版本号的映射关系。
+> 
+> >     type keyIndex struct {
+> >        key         []byte //用户的key名称，比如我们案例中的"hello"
+> >        modified    revision //最后一次修改key时的etcd版本号,比如我们案例中的刚写入hello为world1时的，版本号为2
+> >        generations []generation //generation保存了一个key若干代版本号信息，每代中包含对key的多次修改的版本号列表
+> >     }
+> > 
+> > keyIndex 中包含用户的 key、最后一次修改 key 时的 etcd 版本号、key 的若干代（generation）版本号信息，每代中包含对 key 的多次修改的版本号列表。
+> > 
+> > 如何理解 generations？为什么它是个数组呢?
+> > 
+> > > **generations** 表示**一个 key 从创建到删除的过程，每代对应 key 的一个生命周期的开始与结束**。当你第一次创建一个 key 时，**会生成第 0 代**，后续的修改操作都是在**往第 0 代中追加修改版本号**。当你把 key 删除后，它就会生成新的第 1 代，**一个 key 不断经历创建、删除的过程，它就会生成多个代。**
+> > > 
+> > > generation 结构详细信息如下：
+> > > 
+> > >     type generation struct {
+> > >        ver     int64    //表示此key的修改次数
+> > >        created revision //表示generation结构创建时的版本号
+> > >        revs    []revision //每次修改key时的revision追加到此数组
+> > >     }
+> > > 
+> > > generation 结构中包含此 key 的修改次数、generation 创建时的版本号、对此 key 的修改版本号记录列表。
+> > > 
+> > > > 版本号（revision）并不是一个简单的整数，而是一个结构体,    revision 结构及含义如下
+> > > > 
+> > > >     type revision struct {
+> > > >        main int64    // 一个全局递增的主版本号，随put/txn/delete事务递增，一个事务内的key main版本号是一致的
+> > > >        sub int64    // 一个事务内的子版本号，从0开始随事务内put/delete操作递增
+> > > >     }
+> > > > 
+> > > > revision 包含 main 和 sub 两个字段，main 是全局递增的版本号，它是个 etcd 逻辑时钟，随着 put/txn/delete 等事务递增。sub 是一个事务内的子版本号，从 0 开始随事务内的 put/delete 操作递增。
+> > > > 
+> > > > > 1，比如启动一个空集群，全局版本号默认为 1，
+> > > > > 
+> > > > > 2，执行下面的 txn 事务，它包含两次 put、一次 get 操作，那么按照我们上面介绍的原理，全局版本号随读写事务自增，因此是 **main 为 2**，**sub 随<u>事务内</u>的 put/delete 操作递增**，因此** key hello** 的 revison 为{2,0}，**key world** 的 revision 为{2,1}。
+> > > > > 
+> > > > >     $ etcdctl txn -i
+> > > > >     compares:
+> > > > >     
+> > > > >     
+> > > > >     success requests (get，put，del):
+> > > > >     put hello 1
+> > > > >     get hello
+> > > > >     put world 2
+> > > > > 
+> > > > > 1        
+> > > > > 
+> > > > > 1
+
+#### 7.5.3 MVCC 更新 key 原理
+
+> ![](https://static001.geekbang.org/resource/image/84/e1/84377555cb4150ea7286c9ef3c5e17e1.png)
+> 
+> 当你通过 etcdctl 发起一个 put hello 操作时，如下面的 put 事务流程图流程一所示，在 put 写事务中
+> 
+> > 1，首先它需要从 treeIndex 模块中查询 key 的 keyIndex 索引信息，keyIndex 中存储了** key 的创建版本号**、**修改的次数**等信息，这些信息在事务中发挥着重要作用，因此**会存储在 boltdb 的 value 中**。第一次创建 hello key，此时 keyIndex 索引为空。    
+> > 
+> > 2，etcd 会根据当前的全局版本号（空集群启动时默认为 1）自增，生成 put hello 操作对应的版本号 revision{2,0}，这就是 boltdb 的 key
+> > 
+> > > **boltdb 的 value 是 mvccpb.KeyValue 结构体**，它是由用户 **key**、**value**、**create_revision**、**mod_revision**、**version**、**lease**组成。它们的含义分别如下：
+> > > 
+> > > 1，**create_revision**表示**此 key 创建时的版本号**。
+> > > 
+> > > >  在我们的案例中，key hello 是第一次创建，那么值就是 2。当你再次修改 key hello 的时候，写事务会从 treeIndex 模块查询 hello 第一次创建的版本号，也就是 keyIndex.generations[i].created 字段，赋值给 create_revision 字段；
+> > > 
+> > > 2，**mod_revision** 表示 key 最后一次修改时的版本号，即 put 操作发生时的全局版本号加 1；
+> > > 
+> > > 3， **version**表示此 key 的修改次数。每次修改的时候，写事务会从 treeIndex 模块查询 hello 已经历过的修改次数，也就是 keyIndex.generations[i].ver 字段，将 ver 字段值加 1 后，赋值给 version 字段。  
+> > 
+> > 3，填充好 boltdb 的 KeyValue 结构体后，这时就可以通过 Backend 的写事务 batchTx 接口将 key{2,0},value 为 mvccpb.KeyValue 保存到 boltdb 的缓存中，并同步更新 buffer，如上图中的流程二所示。
+> > 
+> > > 此时存储到 boltdb 中的 key、value 数据如下：
+> > > 
+> > > ![](https://static001.geekbang.org/resource/image/a2/ba/a245b18eabc86ea83a71349f49bdceba.jpg)
+> > > 
+> > > 然后 put 事务需将本次修改的版本号与用户 key 的映射关系保存到 treeIndex 模块中，也就是上图中的流程三。
+> > > 
+> > > 因为 key hello 是首次创建，treeIndex 模块它会生成 key hello 对应的 keyIndex 对象，并填充相关数据结构。
+> > > 
+> > > keyIndex 填充后的结果如下所示：
+> > > 
+> > >     key hello的keyIndex:
+> > >     key:     "hello"
+> > >     modified: <2,0>
+> > >     generations:
+> > >     [{ver:1,created:<2,0>,revisions: [<2,0>]} ]
+> > > 
+> > > > 我们来简易分析一下上面的结果。
+> > > > 
+> > > > 1，key 为 hello，modified 为最后一次修改版本号 <2,0>，key hello 是首次创建的，因此新增一个 generation 代跟踪它的生命周期、修改记录；
+> > > > 
+> > > > 2，generation 的 ver 表示修改次数，首次创建为 1，后续随着修改操作递增；
+> > > > 
+> > > > 3，generation.created 表示创建 generation 时的版本号为 <2,0>；4，revision 数组保存对此 key 修改的版本号列表，每次修改都会将将相应的版本号追加到 revisions 数组中。
+> > > > 
+> > > > 通过以上流程，一个 put 操作终于完成。
+> > > 
+> > > 1
+> > 
+> > 4，**此时数据还并未持久化**，为了提升 etcd 的写吞吐量、性能，一般情况下（**默认堆积的写事务数大于 1 万才在写事务结束时同步持久化）**，**数据持久化由 Backend 的异步 goroutine 完成**，**它通过事务批量提交，定时将 boltdb 页缓存中的脏数据提交到持久化存储磁盘中**，也就是下图中的黑色虚线框住的流程四。
+> > 
+> > ![](https://static001.geekbang.org/resource/image/5d/a2/5de49651cedf4595648aeba3c131cea2.png)
+> > 
+> > 1
+
+#### 7.5.4 MVCC 查询 key 原理
+
+> **完成 put hello 为 world1 操作后，通过 etcdctl 发起一个 get hello 操作**
+> 
+> > ![](https://static001.geekbang.org/resource/image/55/ee/55998d8a1f3091076a9119d85e7175ee.png)
+> > 
+> > 1, MVCC模块会创建一个读事务对象（TxnRead），在 etcd 3.4 中 Backend 实现了 ConcurrentReadTx， 也就是并发读特性。
+> > 
+> > 2，**并发读特性**的**核心原理**是创建读事务对象时，它会**全量拷贝当前写事务未提交的 buffer 数据**，并发的读写事务不再阻塞在一个 buffer 资源锁上，实现了全并发读。
+> 
+> 
+> 
+> 指定版本号读取历史记录又是怎么实现的呢
+> 
+> > 1，当你再次发起一个 put hello 为 world2 修改操作时，key hello 对应的 keyIndex 的结果如下面所示，keyIndex.modified 字段更新为 <3,0>，generation 的 revision 数组追加最新的版本号 <3,0>，ver 修改为 2.
+> > 
+> >     key hello的keyIndex:
+> >     key:     "hello"
+> >     modified: <3,0>
+> >     generations:
+> >     [{ver:2,created:<2,0>,revisions: [<2,0>,<3,0>]}]
+> > 
+> > 2，boltdb 插入一个新的 key revision{3,0}，此时存储到 boltdb 中的 key-value 数据如下：
+> > 
+> > ![](https://static001.geekbang.org/resource/image/8b/f7/8bec06d61622f2a99ea9dd2f78e693f7.jpg)
+> > 
+> > 3，这时你再发起一个**指定历史版本号为 2 的读请求**时，实际是**读版本号为 2** 的时间点的快照数据。treeIndex 模块会遍历 generation 内的历史版本号，**返回小于等于** 2 的最大历史版本号，在我们这个案例中，也就是 revision{2,0}，以它作为 boltdb 的 key，从 boltdb 中查询出 value 即可。
+> 
+> 
+> 
+> 
+
+#### 7.5.5 MVCC 删除 key 原理
+
+> 当你执行 etcdctl del hello 命令时，etcd 会**立刻**从 treeIndex 和 boltdb 中删除此数据吗？还是**增加一个标记实现延迟删除（lazy delete）**呢？
+> 
+> 答案为**etcd 实现的是延期删除模式，原理与 key 更新类似。**
+> 
+> > 1，与更新 key 不一样之处在于，一方面，**生成的 boltdb key 版本号{4,0,t}追加了删除标识（tombstone, 简写 t）**，boltdb value 变成只含用户 key 的 KeyValue 结构体。
+> > 
+> > 2，另一方面 treeIndex 模块也会给此 key hello 对应的 keyIndex 对象，追加一个空的 generation 对象，表示此索引对应的 key 被删除了。
+> > 
+> > 3，当你再次查询 hello 的时候，treeIndex 模块根据 key hello 查找到 keyindex 对象后，**若发现其存在空的 generation 对象**，并且查询的版本号**大于等于**被删除时的版本号，则会返回空。
+> 
+> etcdctl hello 操作后的 keyIndex 的结果如下面所示：
+> 
+> >     key hello的keyIndex:
+> >     key:     "hello"
+> >     modified: <4,0>
+> >     generations:
+> >     [
+> >     {ver:3,created:<2,0>,revisions: [<2,0>,<3,0>,<4,0>(t)]}，             
+> >     {empty}
+> >     ]
+> > 
+> > 1，boltdb 此时会插入一个新的 key revision{4,0,t}，此时存储到 boltdb 中的 key-value 数据如下：
+> > 
+> > ![](https://static001.geekbang.org/resource/image/da/17/da4e5bc5033619dda296c022ac6yyc17.jpg)
+> > 
+> > 那么** key 打上删除标记后有哪些用途**呢？什么时候会真正删除它呢？
+> > 
+> > > 1，一方面删除 key 时会生成 events，Watch 模块根据 key 的删除标识，会生成对应的 Delete 事件。
+> > > 
+> > > 2，另一方面，当你重启 etcd，遍历 boltdb 中的 key 构建 treeIndex 内存树时，你需要知道哪些 key 是已经被删除的，并为对应的 key 索引生成 tombstone 标识。而**真正删除 treeIndex 中的索引对象**、**boltdb 中的 key**是通过**压缩 (compactor) **组件异步完成。
+> > > 
+> > > 3，正因为 etcd 的删除 key 操作是基于以上延期删除原理实现的，因此**只要压缩组件未回收历史版本**，**我们就能从 etcd 中找回误删的数据**。
+> > 
+> > 
 
 ## 8，项目
 
