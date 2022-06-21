@@ -1386,8 +1386,6 @@ apiserver 分为 kube-apiserver 、aggregator-apiserver、
 > 
 > > 在节点异常时，表示节点健康的 key 能被从 etcd 集群中自动删除
 
-
-
 ### 7.6.2 Lease 整体架构
 
 > > ![](https://static001.geekbang.org/resource/image/ac/7c/ac70641fa3d41c2dac31dbb551394b7c.png)
@@ -1410,7 +1408,60 @@ apiserver 分为 kube-apiserver 、aggregator-apiserver、
 
 ### 7.6.3 key 如何关联 Lease
 
+> 如何为节点健康指标创建一个租约、并与节点健康指标 key 关联
 > 
+> > KV 模块的一样，client 可通过 clientv3 库的 Lease API 发起 RPC 调用
+> > 
+> >     # 创建一个TTL为600秒的lease，etcd server返回LeaseID
+> >     $ etcdctl lease grant 600
+> >     lease 326975935f48f814 granted with TTL(600s)
+> >     
+> >     
+> >     # 查看lease的TTL、剩余时间
+> >     $ etcdctl lease timetolive 326975935f48f814
+> >     lease 326975935f48f814 granted with TTL(600s)， remaining(590s)
+> > 
+> > 11
+> 
+> 当 Lease server 收到 client 的创建一个有效期 600 秒的 Lease 请求后，会**通过 Raft 模块完成日志同步**，随后 **Apply 模块**通过 **Lessor 模块的 Grant 接口**执行日志条目内容。
+> 
+> > 1，Lessor 的 Grant 接口会把 Lease 保存到内存的 ItemMap 数据结构中
+> > 
+> > 2，然后它需要持久化 Lease，将 Lease 数据保存到 boltdb 的 Lease bucket 中，返回一个唯一的 LeaseID 给 client
+> 
+> 通过这样一个流程，就基本完成了 Lease 的创建。那么节点的健康指标数据如何关联到此 Lease 上呢？
+> 
+> > KV 模块的 API 接口提供了一个"--lease"参数，你可以通过如下命令，将 key node 关联到对应的 LeaseID 上。然后你查询的时候增加 -w 参数输出格式为 json，就可查看到 key 关联的 LeaseID
+> > 
+> >     $ etcdctl put node healthy --lease 326975935f48f818
+> >     OK
+> >     $ etcdctl get node -w=json | python -m json.tool
+> >     {
+> >         "kvs":[
+> >             {
+> >                 "create_revision":24，
+> >                 "key":"bm9kZQ=="，
+> >                 "Lease":3632563850270275608，
+> >                 "mod_revision":24，
+> >                 "value":"aGVhbHRoeQ=="，
+> >                 "version":1
+> >             }
+> >         ]
+> >     }        
+> > 
+> > 1
+> > 
+> > 1
+> 
+> 以上流程原理如下图所示，**它描述了用户的 key 是如何与指定 Lease 关联的**。
+> 
+> > 当你通过 put 等命令新增一个指定了"--lease"的 key 时，**MVCC 模块**它会**通过 Lessor 模块的 Attach 方法**，<mark>将 key 关联到 Lease 的 key 内存集合 ItemSet 中</mark>
+> > 
+> > ![](https://static001.geekbang.org/resource/image/aa/ee/aaf8bf5c3841a641f8c51fcc34ac67ee.png)
+> > 
+> > 
+> 
+> > 
 
 ## 8，项目
 
