@@ -1301,8 +1301,6 @@ apiserver 分为 kube-apiserver 、aggregator-apiserver、
 > > 
 > > 2，**并发读特性**的**核心原理**是创建读事务对象时，它会**全量拷贝当前写事务未提交的 buffer 数据**，并发的读写事务不再阻塞在一个 buffer 资源锁上，实现了全并发读。
 > 
-> 
-> 
 > 指定版本号读取历史记录又是怎么实现的呢
 > 
 > > 1，当你再次发起一个 put hello 为 world2 修改操作时，key hello 对应的 keyIndex 的结果如下面所示，keyIndex.modified 字段更新为 <3,0>，generation 的 revision 数组追加最新的版本号 <3,0>，ver 修改为 2.
@@ -1318,10 +1316,6 @@ apiserver 分为 kube-apiserver 、aggregator-apiserver、
 > > ![](https://static001.geekbang.org/resource/image/8b/f7/8bec06d61622f2a99ea9dd2f78e693f7.jpg)
 > > 
 > > 3，这时你再发起一个**指定历史版本号为 2 的读请求**时，实际是**读版本号为 2** 的时间点的快照数据。treeIndex 模块会遍历 generation 内的历史版本号，**返回小于等于** 2 的最大历史版本号，在我们这个案例中，也就是 revision{2,0}，以它作为 boltdb 的 key，从 boltdb 中查询出 value 即可。
-> 
-> 
-> 
-> 
 
 #### 7.5.5 MVCC 删除 key 原理
 
@@ -1357,7 +1351,116 @@ apiserver 分为 kube-apiserver 、aggregator-apiserver、
 > > > 2，另一方面，当你重启 etcd，遍历 boltdb 中的 key 构建 treeIndex 内存树时，你需要知道哪些 key 是已经被删除的，并为对应的 key 索引生成 tombstone 标识。而**真正删除 treeIndex 中的索引对象**、**boltdb 中的 key**是通过**压缩 (compactor) **组件异步完成。
 > > > 
 > > > 3，正因为 etcd 的删除 key 操作是基于以上延期删除原理实现的，因此**只要压缩组件未回收历史版本**，**我们就能从 etcd 中找回误删的数据**。
+
+## 7.6 租约
+
+### 7.6.1 什么是Lease
+
+> #### etcd 的一个典型的应用场景是 Leader 选举
+> 
+> #### Leader 选举背后技术点之一是Lease
+> 
+> > 1，在实际业务场景中，我们常常会遇到类似 Kubernetes 的**调度器**、控制器组件**同一时刻只能存在一个副本对外提供服务的情况**。然而单副本部署的组件，是无法保证其高可用性的。
 > > 
+> > 2，为了保证同一时刻只有一个能对外提供服务，我们需要引入 Leader 选举机制。
+> 
+> #### Leader 选举本质是要解决什么问题呢？
+> 
+> > 1，首先当然是要保证 Leader 的唯一性，确保集群不出现多个 Leader，才能保证业务逻辑准确性，也就是安全性（Safety）、互斥性。
+> > 
+> > 2，其次是主节点故障后，备节点应可快速感知到其异常，也就是活性（liveness）检测。实现活性检测主要有两种方案。
+> > 
+> > > 方案一为被动型检测，你可以通过探测节点定时拨测 Leader 节点，看是否健康，比如 Redis Sentinel。
+> > > 
+> > > 方案二为主动型上报，Leader 节点可定期向**协调服务**发送"特殊心跳"汇报健康状态，**若其未正常发送心跳，并超过和协调服务约定的最大存活时间后，就会被协调服务移除 Leader 身份标识**。同时其他节点可通过协调服务，快速感知到 Leader 故障了，进而发起新的选举。
+> 
+> #### Lease，正是**基于主动型上报模式**，提供的一种活性检测机制。Lease 顾名思义，**client 和 etcd server 之间存在一个约定**，内容是
+> 
+> > 1，**etcd server 保证在约定的有效期内（TTL），不会删除你关联到此 Lease 上的 key-value**；
+> > 
+> > 2，若你未在有效期内续租，那么 etcd server 就会删除 Lease 和其关联的 key-value。
+> > 
+> > 3，可以基于 Lease 的 TTL 特性，解决类似 Leader 选举、Kubernetes Event 自动淘汰、服务发现场景中故障节点自动剔除等问题
+> 
+> #### 理解 Lease 的核心特性原理，以一个实际场景中的经常遇到的**异常节点自动剔除**为案例
+> 
+> > 在节点异常时，表示节点健康的 key 能被从 etcd 集群中自动删除
+
+### 7.6.2 Lease 整体架构
+
+> > ![](https://static001.geekbang.org/resource/image/ac/7c/ac70641fa3d41c2dac31dbb551394b7c.png)
+> > 
+> > 1，etcd 在启动的时候，创建 Lessor 模块的时候，它会启动两个常驻 goroutine
+> > 
+> > > 1，一个是**RevokeExpiredLease 任务**：定时检查是否有过期 Lease，发起撤销过期的 Lease 操作；
+> > > 
+> > > 2，一个是 **CheckpointScheduledLease**：定时触发更新 Lease 的剩余到期时间的操作
+> > 
+> > 2，Lessor 模块提供了 Grant、Revoke、LeaseTimeToLive、LeaseKeepAlive API 给 client 使用，各接口作用如下:
+> > 
+> > > 1，Grant 表示创建一个 TTL 为你指定秒数的 Lease，Lessor 会将 Lease 信息持久化存储在 boltdb 中；
+> > > 
+> > > 2，Revoke 表示撤销 Lease 并删除其关联的数据；
+> > > 
+> > > 3，LeaseTimeToLive 表示获取一个 Lease 的有效期、剩余时间；
+> > > 
+> > > 4，LeaseKeepAlive 表示为 Lease 续期。
+
+### 7.6.3 key 如何关联 Lease
+
+> 如何为节点健康指标创建一个租约、并与节点健康指标 key 关联
+> 
+> > KV 模块的一样，client 可通过 clientv3 库的 Lease API 发起 RPC 调用
+> > 
+> >     # 创建一个TTL为600秒的lease，etcd server返回LeaseID
+> >     $ etcdctl lease grant 600
+> >     lease 326975935f48f814 granted with TTL(600s)
+> >     
+> >     
+> >     # 查看lease的TTL、剩余时间
+> >     $ etcdctl lease timetolive 326975935f48f814
+> >     lease 326975935f48f814 granted with TTL(600s)， remaining(590s)
+> > 
+> > 11
+> 
+> 当 Lease server 收到 client 的创建一个有效期 600 秒的 Lease 请求后，会**通过 Raft 模块完成日志同步**，随后 **Apply 模块**通过 **Lessor 模块的 Grant 接口**执行日志条目内容。
+> 
+> > 1，Lessor 的 Grant 接口会把 Lease 保存到内存的 ItemMap 数据结构中
+> > 
+> > 2，然后它需要持久化 Lease，将 Lease 数据保存到 boltdb 的 Lease bucket 中，返回一个唯一的 LeaseID 给 client
+> 
+> 通过这样一个流程，就基本完成了 Lease 的创建。那么节点的健康指标数据如何关联到此 Lease 上呢？
+> 
+> > KV 模块的 API 接口提供了一个"--lease"参数，你可以通过如下命令，将 key node 关联到对应的 LeaseID 上。然后你查询的时候增加 -w 参数输出格式为 json，就可查看到 key 关联的 LeaseID
+> > 
+> >     $ etcdctl put node healthy --lease 326975935f48f818
+> >     OK
+> >     $ etcdctl get node -w=json | python -m json.tool
+> >     {
+> >         "kvs":[
+> >             {
+> >                 "create_revision":24，
+> >                 "key":"bm9kZQ=="，
+> >                 "Lease":3632563850270275608，
+> >                 "mod_revision":24，
+> >                 "value":"aGVhbHRoeQ=="，
+> >                 "version":1
+> >             }
+> >         ]
+> >     }        
+> > 
+> > 1
+> > 
+> > 1
+> 
+> 以上流程原理如下图所示，**它描述了用户的 key 是如何与指定 Lease 关联的**。
+> 
+> > 当你通过 put 等命令新增一个指定了"--lease"的 key 时，**MVCC 模块**它会**通过 Lessor 模块的 Attach 方法**，<mark>将 key 关联到 Lease 的 key 内存集合 ItemSet 中</mark>
+> > 
+> > ![](https://static001.geekbang.org/resource/image/aa/ee/aaf8bf5c3841a641f8c51fcc34ac67ee.png)
+> > 
+> > 
+> 
 > > 
 
 ## 8，项目
