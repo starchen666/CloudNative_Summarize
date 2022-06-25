@@ -1356,8 +1356,8 @@ apiserver 分为 kube-apiserver 、aggregator-apiserver、
 
 ### 7.6.1 什么是Lease
 
-> #### etcd 的一个典型的应用场景是 Leader 选举
-> 
+#### etcd 的一个典型的应用场景是 Leader 选举
+
 > #### Leader 选举背后技术点之一是Lease
 > 
 > > 1，在实际业务场景中，我们常常会遇到类似 Kubernetes 的**调度器**、控制器组件**同一时刻只能存在一个副本对外提供服务的情况**。然而单副本部署的组件，是无法保证其高可用性的。
@@ -1366,21 +1366,21 @@ apiserver 分为 kube-apiserver 、aggregator-apiserver、
 > 
 > #### Leader 选举本质是要解决什么问题呢？
 > 
-> > 1，首先当然是要保证 Leader 的唯一性，确保集群不出现多个 Leader，才能保证业务逻辑准确性，也就是安全性（Safety）、互斥性。
+> > 1，首先当然是**要保证 Leader 的唯一性**，确保集群不出现多个 Leader，才能保证业务逻辑准确性，也就是安全性（Safety）、互斥性。
 > > 
-> > 2，其次是主节点故障后，备节点应可快速感知到其异常，也就是活性（liveness）检测。实现活性检测主要有两种方案。
+> > 2，其次是**主节点故障后，备节点应可快速感知到其异常**，也就是**活性（liveness）检测**。实现活性检测主要有两种方案。
 > > 
-> > > 方案一为被动型检测，你可以通过探测节点定时拨测 Leader 节点，看是否健康，比如 Redis Sentinel。
+> > > **方案一**为被动型检测，你可以通过探测节点定时拨测 Leader 节点，看是否健康，比如 Redis Sentinel。
 > > > 
-> > > 方案二为主动型上报，Leader 节点可定期向**协调服务**发送"特殊心跳"汇报健康状态，**若其未正常发送心跳，并超过和协调服务约定的最大存活时间后，就会被协调服务移除 Leader 身份标识**。同时其他节点可通过协调服务，快速感知到 Leader 故障了，进而发起新的选举。
+> > > **方案二**为主动型上报，Leader 节点可定期向**协调服务**发送"特殊心跳"汇报健康状态，**若其未正常发送心跳，并超过和协调服务约定的最大存活时间后，就会被协调服务移除 Leader 身份标识**。同时其他节点可通过协调服务，快速感知到 Leader 故障了，进而发起新的选举。
 > 
 > #### Lease，正是**基于主动型上报模式**，提供的一种活性检测机制。Lease 顾名思义，**client 和 etcd server 之间存在一个约定**，内容是
 > 
 > > 1，**etcd server 保证在约定的有效期内（TTL），不会删除你关联到此 Lease 上的 key-value**；
 > > 
-> > 2，若你未在有效期内续租，那么 etcd server 就会删除 Lease 和其关联的 key-value。
+> > 2，若你**未在有效期内续租**，那么 etcd server 就会删除 Lease 和其关联的 key-value。
 > > 
-> > 3，可以基于 Lease 的 TTL 特性，解决类似 Leader 选举、Kubernetes Event 自动淘汰、服务发现场景中故障节点自动剔除等问题
+> > 3，可以**基于 Lease 的 TTL 特性，解决类似 Leader 选举**、**Kubernetes Event 自动淘汰**、**服务发现场景中故障节点自动剔除**等问题
 > 
 > #### 理解 Lease 的核心特性原理，以一个实际场景中的经常遇到的**异常节点自动剔除**为案例
 > 
@@ -1390,9 +1390,9 @@ apiserver 分为 kube-apiserver 、aggregator-apiserver、
 
 > > ![](https://static001.geekbang.org/resource/image/ac/7c/ac70641fa3d41c2dac31dbb551394b7c.png)
 > > 
-> > 1，etcd 在启动的时候，创建 Lessor 模块的时候，它会启动两个常驻 goroutine
+> > 1，etcd 在启动的时候，创建 Lessor 模块的时候，它会启动**两个常驻 goroutine**
 > > 
-> > > 1，一个是**RevokeExpiredLease 任务**：定时检查是否有过期 Lease，发起撤销过期的 Lease 操作；
+> > > 1，一个是**RevokeExpiredLease 任务**：定时检查是否有过期 Lease，发起撤销过期的 Lease 操作；.
 > > > 
 > > > 2，一个是 **CheckpointScheduledLease**：定时触发更新 Lease 的剩余到期时间的操作
 > > 
@@ -1459,9 +1459,97 @@ apiserver 分为 kube-apiserver 、aggregator-apiserver、
 > > 
 > > ![](https://static001.geekbang.org/resource/image/aa/ee/aaf8bf5c3841a641f8c51fcc34ac67ee.png)
 > > 
-> > 
+> > 1
+
+### 7.6.4 如何优化 Lease 续期性能
+
+> 我们完成了 Lease 创建和数据关联操作.
 > 
+> 在正常情况下，你的**节点存活**时，需要**定期发送 KeepAlive 请求**给 **etcd 续期健康状态的 Lease**，否则你的 Lease 和关联的数据就会被删除。
+> 
+> Lease 是如何续期的? 作为一个高频率的请求 API，etcd 如何优化 Lease 续期的性能呢？
+> 
+> > Lease 续期其实很简单，核心是将 Lease 的过期时间更新为当前系统时间加其 TTL,关键问题在于续期的性能能否满足业务诉求。
 > > 
+> > 影响续期性能因素又是源自多方面的:
+> > 
+> > > 1，首先是 TTL，TTL 过长会导致节点异常后，无法及时从 etcd 中删除，影响服务可用性，而过短，则要求 client 频繁发送续期请求。
+> > > 
+> > > 2，其次是 Lease 数，如果 Lease 成千上万个，那么 etcd 可能无法支撑如此大规模的 Lease 数，导致高负载。
+> > 
+> > 如何解决呢？
+> > 
+> > > 首先我们回顾下早期 etcd v2 版本是如何实现 TTL 特性的。在早期 v2 版本中，没有 Lease 概念，TTL 属性是在 key 上面，为了保证 key 不删除，即便你的 TTL 相同，client 也需要为每个 TTL、key 创建一个 HTTP/1.x 连接，定时发送续期请求给 etcd server。
+> > > 
+> > > 很显然，v2 老版本这种设计，因不支持连接多路复用、相同 TTL 无法复用导致性能较差，无法支撑较大规模的 Lease 场景。
+> > 
+> > > etcd v3 版本为了解决以上问题，提出了 Lease 特性，TTL 属性转移到了 Lease 上， 同时协议从 HTTP/1.x 优化成 gRPC 协议。
+> > > 
+> > > > 1，一方面不同 key 若 TTL 相同，可复用同一个 Lease， 显著减少了 Lease 数。
+> > > > 
+> > > > 2，另一方面，通过 gRPC HTTP/2 实现了多路复用，流式传输，同一连接可支持为多个 Lease 续期，大大减少了连接数。
+> > > > 
+> > > > 通过以上两个优化，实现 Lease 性能大幅提升，满足了各个业务场景诉求。
+
+### 7.6.5 如何高效淘汰过期 Lease
+
+> 节点异常时，未正常续期后，etcd 又是如何淘汰过期 Lease、删除节点健康指标 key 的。
+> 
+> > 汰过期 Lease 的工作由 Lessor 模块的一个异步 goroutine 负责。如下面架构图虚线框所示，它会定时从最小堆中取出已过期的 Lease，执行删除 Lease 和其关联的 key 列表数据的 RevokeExpiredLease 任务。
+> > 
+> > ![](https://static001.geekbang.org/resource/image/b0/6b/b09e9d30157876b031ed206391698c6b.png?wh=2552*1550)
+> 
+> 从图中你可以看到，目前 etcd 是基于最小堆来管理 Lease，实现快速淘汰过期的 Lease。
+> 
+> > etcd 早期的时候，淘汰 Lease方式
+> > 
+> > > etcd 早期的时候，淘汰 Lease非常暴力;
+> > > 
+> > > etcd 会直接遍历所有 Lease，逐个检查 Lease 是否过期，过期则从 Lease 关联的 key 集合中，取出 key 列表，删除它们，时间复杂度是 O(N)。
+> > > 
+> > > 这种方案随着 Lease 数增大，毫无疑问它的性能会变得越来越差。
+> > 
+> > etcd Lease 高效淘汰方案最小堆的实现方法
+> > 
+> > > 我们能否按过期时间排序呢？这样每次只需轮询、检查排在前面的 Lease 过期时间，一旦轮询到未过期的 Lease， 则可结束本轮检查。
+> > > 
+> > > > 1， 每次新增 Lease、续期的时候，它会插入、更新一个对象到最小堆中，对象含有 LeaseID 和其到期时间 unixnano，对象之间按到期时间升序排序。
+> > > > 
+> > > > 2，etcd Lessor 主循环每隔 500ms 执行一次撤销 Lease 检查（RevokeExpiredLease），每次轮询堆顶的元素，若已过期则加入到待淘汰列表，直到堆顶的 Lease 过期时间大于当前，则结束本轮轮询。
+> > 
+> > 相比早期 O(N) 的遍历时间复杂度，使用堆后，插入、更新、删除，它的时间复杂度是 O(Log N)，查询堆顶对象是否过期时间复杂度仅为 O(1)，性能大大提升，可支撑大规模场景下 Lease 的高效淘汰。
+> 
+> 获取到待过期的 LeaseID 后，Leader 是如何通知其他 Follower 节点淘汰它们呢？
+> 
+> > 1，Lessor 模块会将已确认过期的 LeaseID，保存在一个名为 expiredC 的 channel 中，而 etcd server 的主循环会定期从 channel 中获取 LeaseID，发起 revoke 请求，通过 Raft Log 传递给 Follower 节点。
+> > 
+> > 2，各个节点收到 revoke Lease 请求后，获取关联到此 Lease 上的 key 列表，从 boltdb 中删除 key，从 Lessor 的 Lease map 内存中删除此 Lease 对象，最后还需要从 boltdb 的 Lease bucket 中删除这个 Lease。
+> 
+> Lease 的过期自动淘汰逻辑。Leader 节点按过期时间维护了一个最小堆，若你的节点异常未正常续期，那么随着时间消逝，对应的 Lease 则会过期，Lessor 主循环定时轮询过期的 Lease。获取到 ID 后，Leader 发起 revoke 操作，通知整个集群删除 Lease 和关联的数据。
+
+### 7.6.6 为什么需要 checkpoint 机制
+
+> 检查 Lease 是否过期、维护最小堆、针对过期的 Lease 发起 revoke 操作，都是 Leader 节点负责的，它类似于 Lease 的仲裁者，通过以上清晰的权责划分，降低了 Lease 特性的实现复杂度
+> 
+> **问题**
+> 
+> > 1，当 Leader 因重启、crash、磁盘 IO 等异常不可用时，Follower 节点就会发起 Leader 选举，新 Leader 要完成以上职责，必须重建 Lease 过期最小堆等管理数据结构，那么以上重建可能会触发什么问题呢？
+> > 
+> > 2，当你的集群发生 Leader 切换后，新的 Leader 基于 Lease map 信息，按 Lease 过期时间构建一个最小堆时，etcd 早期版本为了优化性能，并未持久化存储 Lease 剩余 TTL 信息，因此重建的时候就会自动给所有 Lease 自动续期了。
+> > 
+> > 3，然而若较频繁出现 Leader 切换，切换时间小于 Lease 的 TTL，这会导致 Lease 永远无法删除，大量 key 堆积，db 大小超过配额等异常。
+> 
+> etcd 引入了检查点机制，也就是下面架构图中黑色虚线框所示的 CheckPointScheduledLeases 的任务。
+> 
+> ![](https://static001.geekbang.org/resource/image/70/59/70ece2fa3bc400edd8d3b09f752ea759.png?wh=2580*1560)
+> 
+> > 1，etcd 启动的时候，Leader 节点后台会运行此异步任务，定期批量地将 Lease 剩余的 TTL 基于 Raft Log 同步给 Follower 节点，Follower 节点收到 CheckPoint 请求后，更新内存数据结构 LeaseMap 的剩余 TTL 信息。
+> > 
+> > 2，另一方面，当 Leader 节点收到 KeepAlive 请求的时候，它也会通过 checkpoint 机制把此 Lease 的剩余 TTL 重置，并同步给 Follower 节点，尽量确保续期后集群各个节点的 Lease 剩余 TTL 一致性。
+> 
+> **最后你要注意的是，此特性对性能有一定影响，目前仍然是试验特性。你可以通过 experimental-enable-lease-checkpoint 参数开启。**
+
+
 
 ## 8，项目
 
@@ -1474,3 +1562,67 @@ apiserver 分为 kube-apiserver 、aggregator-apiserver、
 ### 9.1，~~kubernetes ~~相关开发
 
 #### 9.1.1 CSI
+
+# golang总结
+
+## 1，Go语言基础知识
+
+## 2，Go语言进阶技术
+
+### 2.1 数组和切片
+
+### 2.2 字典的操作
+
+### 2.3 通道
+
+### 2.4 函数使用
+
+### 2.5 结构体以及方法的使用
+
+### 2.6 接口类型的合理运用
+
+### 2.7 指针
+
+### 2.8 GMP
+
+### 2.9 if语句、for语句、switch语句
+
+### 2.10 错误处理
+
+### 2.11 panic、recover、defer
+
+## 3，Go语言实战与应用
+
+### 3.1 测试的基础规则和流程
+
+### 3.2 sync.Mutex和sync.RWMutex
+
+### 3.3 sync.cond
+
+### 3.4 原子操作
+
+### 3.5 sync.WaitGroup和sync.Once
+
+### 3.6 context.Context类型
+
+### 3.7 sync.pool
+
+### 3.8 sync.Map
+
+### 3.9 unicode
+
+### 3.10 strings包与字符串操作
+
+### 3.11 bytes包与字节串操作
+
+### 3.12 io包中的接口和工具
+
+### 3.13 bufio包中的数据结构
+
+### 3.14 使用os包中的API
+
+### 3.15 访问网络服务
+
+### 3.16 基于HTTP协议的网络服务
+
+### 3.17 程序性能分析基础
